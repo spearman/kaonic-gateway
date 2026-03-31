@@ -129,6 +129,7 @@ fn layout(title: &str, body: Markup) -> Markup {
                         a href="/" class="active" { "Dashboard" }
                         a href="/settings" { "Settings" }
                         a href="/update" { "Update" }
+                        a href="/mavlink" { "MAVLink" }
                     }
                     span .serial-badge { "S/N: " (serial()) }
                 }

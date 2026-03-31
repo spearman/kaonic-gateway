@@ -22,4 +22,5 @@ pub fn router() -> Router {
         .route("/", get(frames::get_dashboard))
         .route("/settings", get(pages::get_settings))
         .route("/update", get(pages::get_update))
+        .route("/mavlink", get(pages::get_mavlink))
 }

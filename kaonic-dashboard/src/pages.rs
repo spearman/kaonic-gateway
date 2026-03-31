@@ -349,6 +349,7 @@ fn layout(body: Markup) -> Markup {
                         a href="/" { "Dashboard" }
                         a href="/settings" { "Settings" }
                         a href="/update" { "Update" }
+                        a href="/mavlink" { "MAVLink" }
                     }
                     span .serial-badge { "S/N: " (serial()) }
                 }
@@ -659,6 +660,15 @@ pub async fn get_update() -> impl IntoResponse {
         }
 
         script { (PreEscaped(UPDATE_JS)) }
+    };
+
+    layout(content)
+}
+
+/// `GET /mavlink` — serve the mavlink page
+pub async fn get_mavlink() -> impl IntoResponse {
+    let content = html! {
+        h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.5rem" { "MAVLink" }
     };
 
     layout(content)
