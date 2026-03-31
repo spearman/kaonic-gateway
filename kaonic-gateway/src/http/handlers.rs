@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use kaonic_gateway::config::GatewayConfig;
 use kaonic_gateway::radio::RadioModuleConfig;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::AppState;
 
@@ -188,5 +188,105 @@ fn read_cpu_percent() -> f32 {
     let idle_diff  = idle2.saturating_sub(idle1) as f32;
     if total_diff == 0.0 { return 0.0; }
     ((total_diff - idle_diff) / total_diff * 100.0 * 10.0).round() / 10.0
+}
+
+// ── MAVLink service management ──────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct ServiceStatus {
+    active: bool,
+    enabled: bool,
+    status_text: String,
+}
+
+#[derive(Serialize)]
+pub struct MavlinkStatus {
+    fc: ServiceStatus,
+    gc: ServiceStatus,
+}
+
+/// `GET /api/mavlink/status` — get status of MAVLink services.
+pub async fn get_mavlink_status() -> Result<Json<MavlinkStatus>, StatusCode> {
+    let fc = get_service_status("rns-mavlink-fc.service")?;
+    let gc = get_service_status("rns-mavlink-gc.service")?;
+
+    Ok(Json(MavlinkStatus { fc, gc }))
+}
+
+fn get_service_status(service: &str) -> Result<ServiceStatus, StatusCode> {
+    let active = std::process::Command::new("systemctl")
+        .args(["is-active", service])
+        .output()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .status
+        .success();
+
+    let enabled = std::process::Command::new("systemctl")
+        .args(["is-enabled", service])
+        .output()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .status
+        .success();
+
+    let status_output = std::process::Command::new("systemctl")
+        .args(["status", service])
+        .output()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let status_text = String::from_utf8_lossy(&status_output.stdout)
+        .lines()
+        .find(|line| line.trim().starts_with("Active:"))
+        .map(|line| line.trim().to_string())
+        .unwrap_or_else(|| "Active: unknown".to_string());
+
+    Ok(ServiceStatus {
+        active,
+        enabled,
+        status_text,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct ServiceAction {
+    service: String,
+    action: String,
+}
+
+/// `POST /api/mavlink/control` — control MAVLink services (start/stop/restart/enable/disable).
+pub async fn post_mavlink_control(
+    Json(payload): Json<ServiceAction>,
+) -> Result<StatusCode, StatusCode> {
+    // Validate service name
+    if payload.service != "rns-mavlink-fc.service" && payload.service != "rns-mavlink-gc.service" {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Validate action
+    let valid_actions = ["start", "stop", "restart", "enable", "disable"];
+    if !valid_actions.contains(&payload.action.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    log::info!("MAVLink control: {} {}", payload.action, payload.service);
+
+    let output = std::process::Command::new("systemctl")
+        .args([&payload.action, &payload.service])
+        .output()
+        .map_err(|e| {
+            log::error!("Failed to execute systemctl: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if output.status.success() {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        log::error!(
+            "systemctl {} {} failed: {}",
+            payload.action,
+            payload.service,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Err(StatusCode::INTERNAL_SERVER_ERROR)
+    }
 }
 

@@ -665,10 +665,198 @@ pub async fn get_update() -> impl IntoResponse {
     layout(content)
 }
 
+const MAVLINK_JS: &str = r#"
+async function loadMavlinkStatus() {
+    try {
+        const r = await fetch('/api/mavlink/status');
+        if (!r.ok) {
+            showError('fc_status', 'Failed to load status');
+            showError('gc_status', 'Failed to load status');
+            return;
+        }
+        const d = await r.json();
+
+        updateServiceStatus('fc', d.fc);
+        updateServiceStatus('gc', d.gc);
+    } catch(e) {
+        showError('fc_status', 'Error: ' + e.message);
+        showError('gc_status', 'Error: ' + e.message);
+    }
+}
+
+function updateServiceStatus(prefix, status) {
+    const statusEl = document.getElementById(prefix + '_status');
+    const activeEl = document.getElementById(prefix + '_active');
+    const enabledEl = document.getElementById(prefix + '_enabled');
+    const textEl = document.getElementById(prefix + '_text');
+
+    if (status.active) {
+        activeEl.textContent = 'Running';
+        activeEl.className = 'badge badge-ok';
+    } else {
+        activeEl.textContent = 'Stopped';
+        activeEl.className = 'badge badge-err';
+    }
+
+    if (status.enabled) {
+        enabledEl.textContent = 'Enabled';
+        enabledEl.className = 'badge badge-info';
+    } else {
+        enabledEl.textContent = 'Disabled';
+        enabledEl.className = 'badge badge-gray';
+    }
+
+    textEl.textContent = status.status_text;
+}
+
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.textContent = msg;
+        el.className = 'flash show flash-err';
+    }
+}
+
+function showSuccess(id, msg) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.textContent = msg;
+        el.className = 'flash show flash-ok';
+        setTimeout(() => { el.className = 'flash'; }, 3000);
+    }
+}
+
+async function serviceControl(service, action, statusId) {
+    const statusEl = document.getElementById(statusId);
+    statusEl.textContent = 'Processing...';
+    statusEl.className = 'flash show flash-info';
+
+    try {
+        const r = await fetch('/api/mavlink/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service: service, action: action })
+        });
+
+        if (r.ok) {
+            showSuccess(statusId, action.charAt(0).toUpperCase() + action.slice(1) + ' successful');
+            setTimeout(loadMavlinkStatus, 500);
+        } else {
+            showError(statusId, 'Failed (HTTP ' + r.status + ')');
+        }
+    } catch(e) {
+        showError(statusId, 'Error: ' + e.message);
+    }
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+    loadMavlinkStatus();
+    setInterval(loadMavlinkStatus, 5000);
+});
+"#;
+
 /// `GET /mavlink` — serve the mavlink page
 pub async fn get_mavlink() -> impl IntoResponse {
     let content = html! {
-        h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.5rem" { "MAVLink" }
+        h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.5rem" { "MAVLink Services" }
+
+        style {
+            ".service-card { margin-bottom: 1.5rem; }"
+            ".service-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }"
+            ".service-name { font-size: 1rem; font-weight: 600; color: #e2e8f0; }"
+            ".badge { display: inline-block; padding: .25rem .6rem; border-radius: 4px; font-size: .75rem; font-weight: 600; margin-left: .5rem; }"
+            ".badge-ok { background: #14532d; border: 1px solid #16a34a; color: #86efac; }"
+            ".badge-err { background: #450a0a; border: 1px solid #dc2626; color: #fca5a5; }"
+            ".badge-info { background: #1e3a8a; border: 1px solid #3b82f6; color: #93c5fd; }"
+            ".badge-gray { background: #1e2235; border: 1px solid #3d4262; color: #94a3b8; }"
+            ".status-text { font-size: .85rem; color: #94a3b8; margin-bottom: 1rem; font-family: monospace; }"
+            ".button-group { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }"
+            ".btn-group-label { font-size: .75rem; font-weight: 600; color: #7c85f5; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }"
+        }
+
+        // FC Service Card
+        div .card .service-card {
+            div .service-header {
+                div {
+                    span .service-name { "Flight Controller (FC)" }
+                    span #"fc_active" .badge { "..." }
+                    span #"fc_enabled" .badge { "..." }
+                }
+            }
+            div #"fc_text" .status-text { "Loading..." }
+
+            div {
+                p .btn-group-label { "Service Control" }
+                div .button-group {
+                    button .btn.btn-primary.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-fc.service', 'start', 'fc_status')" { "Start" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-fc.service', 'stop', 'fc_status')" { "Stop" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-fc.service', 'restart', 'fc_status')" { "Restart" }
+                }
+            }
+
+            div style="margin-top: .75rem" {
+                p .btn-group-label { "Autostart" }
+                div .button-group {
+                    button .btn.btn-primary.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-fc.service', 'enable', 'fc_status')" { "Enable" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-fc.service', 'disable', 'fc_status')" { "Disable" }
+                }
+            }
+
+            div #"fc_status" .flash {}
+        }
+
+        // GC Service Card
+        div .card .service-card {
+            div .service-header {
+                div {
+                    span .service-name { "Ground Control (GC)" }
+                    span #"gc_active" .badge { "..." }
+                    span #"gc_enabled" .badge { "..." }
+                }
+            }
+            div #"gc_text" .status-text { "Loading..." }
+
+            div {
+                p .btn-group-label { "Service Control" }
+                div .button-group {
+                    button .btn.btn-primary.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-gc.service', 'start', 'gc_status')" { "Start" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-gc.service', 'stop', 'gc_status')" { "Stop" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-gc.service', 'restart', 'gc_status')" { "Restart" }
+                }
+            }
+
+            div style="margin-top: .75rem" {
+                p .btn-group-label { "Autostart" }
+                div .button-group {
+                    button .btn.btn-primary.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-gc.service', 'enable', 'gc_status')" { "Enable" }
+                    button .btn.btn-outline.btn-sm
+                        type="button"
+                        onclick="serviceControl('rns-mavlink-gc.service', 'disable', 'gc_status')" { "Disable" }
+                }
+            }
+
+            div #"gc_status" .flash {}
+        }
+
+        script { (PreEscaped(MAVLINK_JS)) }
     };
 
     layout(content)

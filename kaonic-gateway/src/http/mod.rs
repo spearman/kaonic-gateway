@@ -27,6 +27,8 @@ pub async fn serve(state: AppState, addr: SocketAddr) {
         .route("/api/settings",                get(handlers::get_settings).put(handlers::put_settings))
         .route("/api/settings/radio/:module",  get(handlers::get_radio).put(handlers::put_radio))
         .route("/api/status",                  get(handlers::get_status))
+        .route("/api/mavlink/status",          get(handlers::get_mavlink_status))
+        .route("/api/mavlink/control",         axum::routing::post(handlers::post_mavlink_control))
         .with_state(state);
 
     let app = api.merge(kaonic_dashboard::router());
