@@ -3,14 +3,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Bytes;
-use axum::extract::{Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
+use axum::http::{Method, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::Parser;
-use tower_http::cors::CorsLayer;
-use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::cors::{Any, CorsLayer};
 
 mod update;
 
@@ -75,11 +74,17 @@ async fn main() {
 
     let state = AppState { commd, gateway };
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+        .allow_credentials(false);
+
     let app = Router::new()
         .route("/api/update/:target/version", get(handle_version))
         .route("/api/update/:target/upload", post(handle_upload))
-        .layer(CorsLayer::permissive())
-        .layer(RequestBodyLimitLayer::new(MAX_UPLOAD_BYTES))
+        .layer(cors)
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(cmd.listen)
