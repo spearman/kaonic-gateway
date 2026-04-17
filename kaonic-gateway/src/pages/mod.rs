@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
 pub mod dashboard;
+pub mod mavlink;
 pub mod media;
 pub mod network;
 pub mod radio;
