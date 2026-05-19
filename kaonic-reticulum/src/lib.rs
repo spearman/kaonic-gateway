@@ -15,6 +15,7 @@ use reticulum::iface::{Interface, InterfaceContext, RxMessage, TxMessage};
 use reticulum::packet::Packet;
 use reticulum::serde::Serialize;
 use tokio::sync::Mutex;
+use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 pub use kaonic_ctrl::radio::RadioClient;
@@ -126,6 +127,7 @@ impl KaonicCtrlInterface {
                                 let frame_bytes = recv_module.frame.as_slice();
                                 let mut frame = Frame::<RADIO_FRAME_SIZE>::new();
                                 frame.copy_from_slice(frame_bytes);
+                                let start = time::Instant::now();
                                 if let Err(err) = rx_network.receive(current_time, &frame) {
                                     notify_error(&error_observer, module, InterfaceErrorKind::RxLdpcDecode);
                                     log::warn!(
@@ -136,10 +138,13 @@ impl KaonicCtrlInterface {
                                     );
                                     continue;
                                 }
+                                log::info!("rx_network.receive {}", start.elapsed().as_nanos());
 
                                 loop {
+                                    let start = time::Instant::now();
                                     match rx_network.process(current_time, &mut rx_frame) {
                                         Ok(assembled) => {
+                                            log::info!("rx_network.proces {}", start.elapsed().as_nanos());
                                             let bytes = assembled.as_slice();
                                             let mut input = InputBuffer::new(bytes);
                                             match Packet::deserialize(&mut input) {
@@ -202,6 +207,7 @@ impl KaonicCtrlInterface {
                     tokio::select! {
                         _ = cancel.cancelled() => break,
                         Some(message) = tx_channel.recv() => {
+                            let start = time::Instant::now();
                             transmit_message(
                                 &radio_client,
                                 module,
@@ -212,6 +218,7 @@ impl KaonicCtrlInterface {
                                 &mut tx_buffer,
                                 message,
                             ).await;
+                            log::info!("transmit_message {}", start.elapsed().as_nanos());
                         }
                         else => break,
                     }
@@ -255,8 +262,10 @@ async fn transmit_message(
     let mut output = OutputBuffer::new(tx_buffer);
     if let Ok(_) = message.packet.serialize(&mut output) {
         let bytes = output.as_slice();
+        let start = time::Instant::now();
         match tx_network.transmit(bytes, OsRng, tx_frames) {
             Ok(frames) => {
+                log::info!("tx_network.transmit {}", start.elapsed().as_nanos());
                 log::trace!(
                     "kaonic_ctrl: tx module={} {} payload_len={} encoded_frames={}",
                     module,
@@ -268,6 +277,7 @@ async fn transmit_message(
                 let mut radio_client = radio_client.lock().await;
                 for frame in frames {
                     let frame_bytes = frame.as_slice();
+                    let start = time::Instant::now();
                     if let Err(err) = radio_client.transmit(module, frame).await {
                         notify_error(error_observer, module, InterfaceErrorKind::TxTransmit);
                         log::warn!(
@@ -279,6 +289,7 @@ async fn transmit_message(
                         );
                         return;
                     }
+                    log::info!("radio_client.transmit {}", start.elapsed().as_nanos());
                     if let Some(observer) = tx_observer {
                         observer(module, frame_bytes);
                     }
