@@ -187,31 +187,35 @@ impl KaonicCtrlInterface {
         };
 
         let tx_task = {
-            let cancel = cancel.clone();
-            let radio_client = radio_client.clone();
-            let tx_observer = tx_observer.clone();
-            let error_observer = error_observer.clone();
-
             tokio::spawn(async move {
-                const BUF_SIZE: usize = reticulum::packet::PACKET_MDU * 2;
-                let mut tx_buffer = [0u8; BUF_SIZE];
-                let mut tx_network = build_radio_network();
-                let mut tx_frames = [Frame::<RADIO_FRAME_SIZE>::new(); LDPC_SEGMENTS_PER_PACKET];
+                let cancel = cancel.clone();
+                let radio_client = radio_client.clone();
+                let tx_observer = tx_observer.clone();
+                let error_observer = error_observer.clone();
 
+                const BUF_SIZE: usize = reticulum::packet::PACKET_MDU * 2;
                 loop {
                     tokio::select! {
                         _ = cancel.cancelled() => break,
                         Some(message) = tx_channel.recv() => {
-                            transmit_message(
-                                &radio_client,
-                                module,
-                                &tx_observer,
-                                &error_observer,
-                                &mut tx_network,
-                                &mut tx_frames,
-                                &mut tx_buffer,
-                                message,
-                            ).await;
+                            let radio_client = radio_client.clone();
+                            let tx_observer = tx_observer.clone();
+                            let error_observer = error_observer.clone();
+                            tokio::spawn(async move {
+                                let mut tx_network = build_radio_network();
+                                let mut tx_buffer = [0u8; BUF_SIZE];
+                                let mut tx_frames = [Frame::<RADIO_FRAME_SIZE>::new(); LDPC_SEGMENTS_PER_PACKET];
+                                transmit_message(
+                                    &radio_client,
+                                    module,
+                                    &tx_observer,
+                                    &error_observer,
+                                    &mut tx_network,
+                                    &mut tx_frames,
+                                    &mut tx_buffer,
+                                    message,
+                                ).await;
+                            });
                         }
                         else => break,
                     }
