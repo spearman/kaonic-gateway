@@ -1,7 +1,7 @@
 [kaonic-plugin]
 name = "Kaonic Gateway"
 description = "Web gateway service that provides the Kaonic device UI, system APIs, plugin management, and runtime status views."
-version = "0.2.3"
+version = "0.2.4"
 service = "kaonic-gateway.service"
 developer = "Beechat Network Systems Ltd"
 channel = "stable"
