@@ -104,6 +104,7 @@ async fn main() -> Result<(), process::ExitCode> {
         cmd.rns_module.min(1),
         None,
         None,
+        None,
     )
     .await
     .map_err(|err| {

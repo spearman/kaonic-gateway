@@ -1076,7 +1076,7 @@ async fn main() -> Result<(), std::process::ExitCode> {
     transport_cfg.set_restart_outlinks(true);
     let transport = Arc::new(Mutex::new(Transport::new(transport_cfg)));
 
-    let iface = KaonicCtrlInterface::new(radio_client, cfg.rns_module.min(1), None, None);
+    let iface = KaonicCtrlInterface::new(radio_client, cfg.rns_module.min(1), None, None, None);
     let iface_mgr = transport.lock().await.iface_manager();
     iface_mgr
         .lock()

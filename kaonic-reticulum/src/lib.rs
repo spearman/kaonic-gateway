@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 pub use kaonic_ctrl::radio::RadioClient;
 
 pub type TxObserver = Arc<dyn Fn(usize, &[u8]) + Send + Sync>;
+pub type RxObserver = Arc<dyn Fn(RxPacketEvent) + Send + Sync>;
 pub type ErrorObserver = Arc<dyn Fn(usize, InterfaceErrorKind) + Send + Sync>;
 const LDPC_SEGMENTS_PER_PACKET: usize = 3;
 const LDPC_REASSEMBLY_QUEUE: usize = 32;
@@ -42,6 +43,7 @@ type RadioSegmentBuffer = FrameSegment<RADIO_FRAME_SIZE, LDPC_SEGMENTS_PER_PACKE
 pub struct KaonicCtrlInterface {
     radio_client: Arc<Mutex<RadioClient>>,
     module: usize,
+    rx_observer: Option<RxObserver>,
     tx_observer: Option<TxObserver>,
     error_observer: Option<ErrorObserver>,
 }
@@ -54,6 +56,12 @@ pub enum InterfaceErrorKind {
     TxLdpcEncode,
     TxTransmit,
     TxSerialize,
+}
+
+pub struct RxPacketEvent <'a> {
+    pub packet: &'a Packet,
+    pub module: usize,
+    pub rssi: i8
 }
 
 impl KaonicCtrlInterface {
@@ -80,12 +88,14 @@ impl KaonicCtrlInterface {
     pub fn new(
         radio_client: Arc<Mutex<RadioClient>>,
         module: usize,
+        rx_observer: Option<RxObserver>,
         tx_observer: Option<TxObserver>,
         error_observer: Option<ErrorObserver>,
     ) -> Self {
         Self {
             radio_client,
             module,
+            rx_observer,
             tx_observer,
             error_observer,
         }
@@ -93,11 +103,12 @@ impl KaonicCtrlInterface {
 
     /// Spawn the interface tasks. Matches the pattern used by other Reticulum interfaces.
     pub async fn spawn(context: InterfaceContext<Self>) {
-        let (radio_client, module, tx_observer, error_observer) = {
+        let (radio_client, module, rx_observer, tx_observer, error_observer) = {
             let inner = context.inner.lock().unwrap();
             (
                 inner.radio_client.clone(),
                 inner.module,
+                inner.rx_observer.clone(),
                 inner.tx_observer.clone(),
                 inner.error_observer.clone(),
             )
@@ -151,6 +162,13 @@ impl KaonicCtrlInterface {
                                                         assembled.id(),
                                                         packet_log_summary(&packet)
                                                     );
+                                                    if let Some(rx_observer) = rx_observer.as_ref() {
+                                                        rx_observer(RxPacketEvent {
+                                                            packet: &packet,
+                                                            module: recv_module.module,
+                                                            rssi: recv_module.rssi
+                                                        });
+                                                    }
                                                     let _ = rx_channel
                                                         .send(RxMessage { address: iface_address, packet })
                                                         .await;

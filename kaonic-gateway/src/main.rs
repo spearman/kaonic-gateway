@@ -218,6 +218,7 @@ async fn async_main() -> Result<(), process::ExitCode> {
         radio_client.clone(),
         &config.radio,
         0,
+        None,
         Some(radio_tx_observer.clone()),
         Some(reticulum_error_observer),
     )

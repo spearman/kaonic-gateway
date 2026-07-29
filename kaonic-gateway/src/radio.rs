@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kaonic_ctrl::protocol::RADIO_FRAME_SIZE;
 use kaonic_ctrl::radio::RadioClient;
 use kaonic_frame::frame::Frame;
-use kaonic_reticulum::{ErrorObserver, KaonicCtrlInterface, TxObserver};
+use kaonic_reticulum::{ErrorObserver, KaonicCtrlInterface, RxObserver, TxObserver};
 use radio_common::{Hertz, Modulation, RadioConfig, RadioConfigBuilder};
 use reticulum::transport::Transport;
 use serde::{Deserialize, Serialize};
@@ -73,6 +73,7 @@ pub async fn attach_radio_interface(
     radio_client: SharedRadioClient,
     radio: &HardwareRadioConfig,
     rns_module: usize,
+    rx_observer: Option<RxObserver>,
     tx_observer: Option<SharedTxObserver>,
     error_observer: Option<SharedErrorObserver>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -96,7 +97,13 @@ pub async fn attach_radio_interface(
         }
     }
 
-    let iface = KaonicCtrlInterface::new(radio_client, rns_module, tx_observer, error_observer);
+    let iface = KaonicCtrlInterface::new(
+        radio_client,
+        rns_module,
+        rx_observer,
+        tx_observer,
+        error_observer
+    );
     let iface_mgr = transport.lock().await.iface_manager();
     iface_mgr
         .lock()
