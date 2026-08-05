@@ -184,23 +184,23 @@ async fn async_main() -> Result<(), process::ExitCode> {
         let _ = tx_events_tx.send((module, payload.to_vec()));
     });
 
-    let mut transport_cfg = TransportConfig::new("kaonic-gateway", &id, true);
-    transport_cfg.set_retransmit(true);
-    transport_cfg.set_timer_config(TimerConfig {
-        in_link_stale: Duration::from_secs(30),
-        in_link_close: Duration::from_secs(15),
-        out_link_restart: Duration::from_secs(45),
-        out_link_stale: Duration::from_secs(30),
-        out_link_close: Duration::from_secs(15),
-        out_link_repeat: Duration::from_secs(10),
-        out_link_keep: Duration::from_secs(5),
-        ..TimerConfig::default()
-    });
-    // Lossy radio interfaces can miss several keep-alive round-trips under
-    // load, so keep links alive longer before marking them stale and restart
-    // stale out-links after 45 s instead of forcing a full re-handshake sooner.
-    transport_cfg.set_restart_outlinks(true);
-    let transport = Arc::new(tokio::sync::Mutex::new(Transport::new(transport_cfg)));
+    let transport_cfg = TransportConfig::new("kaonic-gateway", &id, true)
+        .set_retransmit(true)
+        .set_timer_config(TimerConfig {
+            in_link_stale: Duration::from_secs(30),
+            in_link_close: Duration::from_secs(15),
+            out_link_restart: Duration::from_secs(45),
+            out_link_stale: Duration::from_secs(30),
+            out_link_close: Duration::from_secs(15),
+            out_link_repeat: Duration::from_secs(10),
+            out_link_keep: Duration::from_secs(5),
+            ..TimerConfig::default()
+        })
+        // Lossy radio interfaces can miss several keep-alive round-trips under
+        // load, so keep links alive longer before marking them stale and restart
+        // stale out-links after 45 s instead of forcing a full re-handshake sooner.
+        .set_restart_outlinks(true);
+    let transport = Arc::new(tokio::sync::Mutex::new(transport_cfg.build()));
     let reticulum = Arc::new(GatewayReticulum::new());
     reticulum.attach(transport.clone()).await;
     let reticulum_error_observer: SharedErrorObserver = Arc::new({

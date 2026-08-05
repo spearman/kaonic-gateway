@@ -1534,19 +1534,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-timeout"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
-dependencies = [
- "hyper",
- "hyper-util",
- "pin-project-lite",
- "tokio",
- "tower-service",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3132,26 +3119,34 @@ dependencies = [
 [[package]]
 name = "reticulum"
 version = "0.1.0"
-source = "git+https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs?branch=fix%2Fadd-timer-configs#bbb09ed7a8b6ead454737bd63671cb2f8be65e70"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs#c5e0a3c48eae948507c8b2b1a92599ddba7eedb6"
+dependencies = [
+ "env_logger 0.10.2",
+ "log",
+ "rand_core 0.6.4",
+ "reticulum-core",
+ "rmp",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "tonic-build",
+]
+
+[[package]]
+name = "reticulum-core"
+version = "0.1.0"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs#c5e0a3c48eae948507c8b2b1a92599ddba7eedb6"
 dependencies = [
  "aes",
  "cbc",
  "crypto-common",
  "ed25519-dalek",
- "env_logger 0.10.2",
  "hkdf",
  "hmac",
  "log",
- "prost",
  "rand_core 0.6.4",
  "rmp",
- "serde",
  "sha2",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tonic",
- "tonic-build",
  "x25519-dalek",
 ]
 
@@ -4077,35 +4072,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
-name = "tonic"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e581ba15a835f4d9ea06c55ab1bd4dce26fc53752c69a04aac00703bfb49ba9"
-dependencies = [
- "async-trait",
- "axum 0.8.9",
- "base64",
- "bytes",
- "h2",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-timeout",
- "hyper-util",
- "percent-encoding",
- "pin-project",
- "prost",
- "socket2 0.5.10",
- "tokio",
- "tokio-stream",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
 name = "tonic-build"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4127,12 +4093,9 @@ checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
 dependencies = [
  "futures-core",
  "futures-util",
- "indexmap",
  "pin-project-lite",
- "slab",
  "sync_wrapper",
  "tokio",
- "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",

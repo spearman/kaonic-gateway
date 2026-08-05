@@ -83,20 +83,20 @@ async fn main() -> Result<(), process::ExitCode> {
             process::ExitCode::FAILURE
         })?;
 
-    let mut transport_cfg = TransportConfig::new("kaonic-atak-bridge", &id, true);
-    transport_cfg.set_retransmit(true);
-    transport_cfg.set_timer_config(TimerConfig {
-        in_link_stale: Duration::from_secs(30),
-        in_link_close: Duration::from_secs(15),
-        out_link_restart: Duration::from_secs(45),
-        out_link_stale: Duration::from_secs(30),
-        out_link_close: Duration::from_secs(15),
-        out_link_repeat: Duration::from_secs(10),
-        out_link_keep: Duration::from_secs(5),
-        ..TimerConfig::default()
-    });
-    transport_cfg.set_restart_outlinks(true);
-    let transport = Arc::new(Mutex::new(Transport::new(transport_cfg)));
+    let transport_cfg = TransportConfig::new("kaonic-atak-bridge", &id, true)
+        .set_retransmit(true)
+        .set_timer_config(TimerConfig {
+            in_link_stale: Duration::from_secs(30),
+            in_link_close: Duration::from_secs(15),
+            out_link_restart: Duration::from_secs(45),
+            out_link_stale: Duration::from_secs(30),
+            out_link_close: Duration::from_secs(15),
+            out_link_repeat: Duration::from_secs(10),
+            out_link_keep: Duration::from_secs(5),
+            ..TimerConfig::default()
+        })
+        .set_restart_outlinks(true);
+    let transport = Arc::new(Mutex::new(transport_cfg.build()));
     attach_radio_interface(
         &transport,
         radio_client.clone(),

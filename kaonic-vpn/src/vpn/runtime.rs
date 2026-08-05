@@ -715,7 +715,7 @@ fn spawn_out_link_events(
                                     handle_link_data(&runtime, t, Some(peer_hash), payload.as_slice()).await;
                                 }
                             }
-                            LinkEvent::Proof(_) => {}
+                            LinkEvent::Proof(_) | LinkEvent::RemoteIdentified(_) => {}
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,

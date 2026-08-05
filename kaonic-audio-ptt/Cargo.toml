@@ -18,7 +18,7 @@ kaonic-gateway = { path = "../kaonic-gateway" }
 kaonic-reticulum = { path = "../kaonic-reticulum" }
 log = "0.4"
 rand = "0.8"
-reticulum = { git = "https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs", branch = "fix/add-timer-configs" }
+reticulum = { git = "https://github.com/BeechatNetworkSystemsLtd/Reticulum-rs" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time", "process", "sync", "io-util", "fs"] }

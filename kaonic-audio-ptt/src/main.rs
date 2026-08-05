@@ -1061,20 +1061,20 @@ async fn main() -> Result<(), std::process::ExitCode> {
     });
     spawn_keepalive(radio_client.clone(), cancel.clone());
 
-    let mut transport_cfg = TransportConfig::new("kaonic-audio-ptt", &id, true);
-    transport_cfg.set_retransmit(true);
-    transport_cfg.set_timer_config(TimerConfig {
-        in_link_stale: Duration::from_secs(30),
-        in_link_close: Duration::from_secs(15),
-        out_link_restart: Duration::from_secs(45),
-        out_link_stale: Duration::from_secs(30),
-        out_link_close: Duration::from_secs(15),
-        out_link_repeat: Duration::from_secs(10),
-        out_link_keep: Duration::from_secs(5),
-        ..TimerConfig::default()
-    });
-    transport_cfg.set_restart_outlinks(true);
-    let transport = Arc::new(Mutex::new(Transport::new(transport_cfg)));
+    let transport_cfg = TransportConfig::new("kaonic-audio-ptt", &id, true)
+        .set_retransmit(true)
+        .set_timer_config(TimerConfig {
+            in_link_stale: Duration::from_secs(30),
+            in_link_close: Duration::from_secs(15),
+            out_link_restart: Duration::from_secs(45),
+            out_link_stale: Duration::from_secs(30),
+            out_link_close: Duration::from_secs(15),
+            out_link_repeat: Duration::from_secs(10),
+            out_link_keep: Duration::from_secs(5),
+            ..TimerConfig::default()
+        })
+        .set_restart_outlinks(true);
+    let transport = Arc::new(Mutex::new(transport_cfg.build()));
 
     let iface = KaonicCtrlInterface::new(radio_client, cfg.rns_module.min(1), None, None, None);
     let iface_mgr = transport.lock().await.iface_manager();
@@ -1926,6 +1926,7 @@ fn spawn_out_link_events(state: AppState, cancel: CancellationToken) {
                         LinkEvent::Proof(_) => {
                             update_peer_status(&state, ev.address_hash, "handshake").await;
                         }
+                        LinkEvent::RemoteIdentified(_) => { }
                     },
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,
