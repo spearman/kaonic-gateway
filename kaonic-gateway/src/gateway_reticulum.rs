@@ -317,6 +317,7 @@ fn link_event_kind(event: &LinkEvent) -> String {
         LinkEvent::Data(_) => "data".into(),
         LinkEvent::Proof(_) => "proof".into(),
         LinkEvent::Closed => "closed".into(),
+        LinkEvent::RemoteIdentified(_) => "identified".into(),
     }
 }
 
@@ -326,6 +327,7 @@ fn link_event_details(event: &LinkEvent) -> String {
         LinkEvent::Data(payload) => format!("{} B", payload.as_slice().len()),
         LinkEvent::Proof(hash) => format!("{hash}"),
         LinkEvent::Closed => "Link closed".into(),
+        LinkEvent::RemoteIdentified(identity) => format!("Remote identity {}", identity.address_hash)
     }
 }
 
@@ -338,7 +340,8 @@ fn link_event_packet_len(event: &LinkEvent) -> Option<usize> {
 
 fn link_event_status(event: &LinkEvent) -> &'static str {
     match event {
-        LinkEvent::Activated | LinkEvent::Data(_) | LinkEvent::Proof(_) => "active",
+        LinkEvent::Activated | LinkEvent::Data(_) | LinkEvent::Proof(_) |
+            LinkEvent::RemoteIdentified(_) => "active",
         LinkEvent::Closed => "closed",
     }
 }
