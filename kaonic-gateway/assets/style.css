@@ -629,6 +629,18 @@ select.form-input {
 
 .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(13,203,240,.1); }
 
+/* Read-only field value — used where the hardware offers no choice */
+.field-fixed {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 5px 9px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .field-input:invalid {
   border-color: #f85149;
   box-shadow: inset 0 0 0 1px rgba(248,81,73,.35);

@@ -4,7 +4,9 @@ use kaonic_ctrl::protocol::RADIO_FRAME_SIZE;
 use kaonic_ctrl::radio::RadioClient;
 use kaonic_frame::frame::Frame;
 use kaonic_reticulum::{ErrorObserver, KaonicCtrlInterface, TxObserver};
-use radio_common::{Accelerator, Hertz, Modulation, RadioConfig, RadioConfigBuilder};
+use radio_common::{
+    Accelerator, Antenna, Hertz, Modulation, RadioBand, RadioConfig, RadioConfigBuilder,
+};
 use reticulum::transport::Transport;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -19,6 +21,23 @@ pub fn default_accelerator() -> Accelerator {
     Accelerator::Native
 }
 
+/// Default antenna for the 2.4 GHz band (the only band with an antenna switch).
+pub fn default_antenna() -> Antenna {
+    Antenna::Internal
+}
+
+/// Lowest frequency the 2.4 GHz transceiver (RF24) covers.
+const BAND_24_MIN_HZ: u64 = 2_400_000_000;
+
+/// Band a module operates in, derived from its tuned frequency.
+pub fn band_for_config(radio_config: &RadioConfig) -> RadioBand {
+    if radio_config.freq.as_hz() >= BAND_24_MIN_HZ {
+        RadioBand::Band24
+    } else {
+        RadioBand::Band09
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RadioModuleConfig {
     pub radio_config: RadioConfig,
@@ -26,6 +45,18 @@ pub struct RadioModuleConfig {
     /// Baseband acceleration: on-chip (`Native`) or external FPGA (`Hardware`).
     #[serde(default = "default_accelerator")]
     pub accelerator: Accelerator,
+    /// Antenna selection for the 2.4 GHz band. The sub-GHz path has no antenna
+    /// switch on this board — it is always wired to the external connector — so
+    /// this is only applied when the module is tuned to 2.4 GHz.
+    #[serde(default = "default_antenna")]
+    pub antenna: Antenna,
+}
+
+impl RadioModuleConfig {
+    /// Band this module currently operates in.
+    pub fn band(&self) -> RadioBand {
+        band_for_config(&self.radio_config)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -47,6 +78,7 @@ impl Default for HardwareRadioConfig {
                         radio_common::modulation::OfdmModulation::default(),
                     ),
                     accelerator: default_accelerator(),
+                    antenna: default_antenna(),
                 },
                 RadioModuleConfig {
                     radio_config: RadioConfigBuilder::new()
@@ -58,6 +90,7 @@ impl Default for HardwareRadioConfig {
                         radio_common::modulation::OfdmModulation::default(),
                     ),
                     accelerator: default_accelerator(),
+                    antenna: default_antenna(),
                 },
             ],
         }
@@ -111,6 +144,18 @@ pub async fn attach_radio_interface(
             .await
         {
             log::warn!("boot accelerator error for module {module}: {e:?}");
+        }
+        // Only the 2.4 GHz front-end has an antenna switch; sub-GHz is hard-wired
+        // to the external connector, so there is nothing to select for Band09.
+        if cfg.band() == RadioBand::Band24 {
+            if let Err(e) = radio_client
+                .lock()
+                .await
+                .set_antenna(module, RadioBand::Band24, cfg.antenna)
+                .await
+            {
+                log::warn!("boot antenna error for module {module}: {e:?}");
+            }
         }
     }
 

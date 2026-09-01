@@ -68,6 +68,9 @@ pub struct Command {
     /// Address to bind the HTTP server — dashboard + API (default: 0.0.0.0:80)
     #[arg(long, default_value = "0.0.0.0:80")]
     pub http_addr: std::net::SocketAddr,
+    /// Address to bind the HTTPS server (default: same IP as --http-addr, port 443)
+    #[arg(long)]
+    pub https_addr: Option<std::net::SocketAddr>,
 }
 
 fn main() -> Result<(), process::ExitCode> {
@@ -81,7 +84,9 @@ fn main() -> Result<(), process::ExitCode> {
 
 async fn async_main() -> Result<(), process::ExitCode> {
     let cmd = Command::parse();
-    let https_addr = std::net::SocketAddr::new(cmd.http_addr.ip(), 443);
+    let https_addr = cmd
+        .https_addr
+        .unwrap_or_else(|| std::net::SocketAddr::new(cmd.http_addr.ip(), 443));
 
     let db_path =
         std::env::var("KAONIC_GATEWAY_DB_PATH").unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());

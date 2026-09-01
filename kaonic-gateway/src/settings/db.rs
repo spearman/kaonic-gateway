@@ -154,10 +154,17 @@ impl Database {
                 .flatten()
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or_else(|| defaults.module_configs[i].accelerator);
+            let antenna = self
+                .get(&format!("kaonic_ctrl_antenna{suffix}"))
+                .ok()
+                .flatten()
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or_else(|| defaults.module_configs[i].antenna);
             RadioModuleConfig {
                 radio_config,
                 modulation,
                 accelerator,
+                antenna,
             }
         });
 
@@ -209,6 +216,10 @@ impl Database {
         self.set(
             &format!("kaonic_ctrl_accelerator{suffix}"),
             &serde_json::to_string(&cfg.accelerator).unwrap(),
+        )?;
+        self.set(
+            &format!("kaonic_ctrl_antenna{suffix}"),
+            &serde_json::to_string(&cfg.antenna).unwrap(),
         )?;
         Ok(())
     }

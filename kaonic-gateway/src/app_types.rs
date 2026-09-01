@@ -1,7 +1,7 @@
 use kaonic_vpn::VpnSnapshot;
 use radio_common::{
     modulation::{Modulation, OfdmModulation},
-    Accelerator, RadioConfig,
+    Accelerator, Antenna, RadioConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,8 @@ pub struct RadioModuleConfigDto {
     pub modulation: Modulation,
     #[serde(default = "crate::radio::default_accelerator")]
     pub accelerator: Accelerator,
+    #[serde(default = "crate::radio::default_antenna")]
+    pub antenna: Antenna,
 }
 
 impl Default for RadioModuleConfigDto {
@@ -22,6 +24,7 @@ impl Default for RadioModuleConfigDto {
             radio_config: radio_common::RadioConfigBuilder::new().build(),
             modulation: Modulation::Ofdm(OfdmModulation::default()),
             accelerator: crate::radio::default_accelerator(),
+            antenna: crate::radio::default_antenna(),
         }
     }
 }
@@ -302,6 +305,7 @@ impl From<RadioModuleConfig> for RadioModuleConfigDto {
             radio_config: c.radio_config,
             modulation: c.modulation,
             accelerator: c.accelerator,
+            antenna: c.antenna,
         }
     }
 }
@@ -312,6 +316,7 @@ impl From<RadioModuleConfigDto> for RadioModuleConfig {
             radio_config: d.radio_config,
             modulation: d.modulation,
             accelerator: d.accelerator,
+            antenna: d.antenna,
         }
     }
 }

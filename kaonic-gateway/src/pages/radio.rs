@@ -54,6 +54,7 @@ pub async fn save_radio_module(
         .ok_or_else(|| ServerFnError::new("missing AppState context"))?;
 
     let radio_cfg = RadioModuleConfig::from(cfg);
+    let band = radio_cfg.band();
 
     state
         .settings
@@ -82,6 +83,14 @@ pub async fn save_radio_module(
         .set_accelerator(module, radio_cfg.accelerator)
         .await
         .map_err(|e| ServerFnError::new(format!("set_accelerator: {e:?}")))?;
+
+    // Sub-GHz has no antenna switch on this board — it is always external.
+    if band == radio_common::RadioBand::Band24 {
+        client
+            .set_antenna(module, radio_common::RadioBand::Band24, radio_cfg.antenna)
+            .await
+            .map_err(|e| ServerFnError::new(format!("set_antenna: {e:?}")))?;
+    }
 
     Ok(())
 }
@@ -401,6 +410,11 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
         radio_common::Accelerator::Hardware => "Hardware",
     };
 
+    let init_antenna = match module.antenna {
+        radio_common::Antenna::Internal => "Internal",
+        radio_common::Antenna::External => "External",
+    };
+
     let ofdm = match &module.modulation {
         Modulation::Ofdm(o) => o.clone(),
         _ => OfdmModulation::default(),
@@ -428,6 +442,10 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
         radio_common::Accelerator::Native => "Native",
         radio_common::Accelerator::Hardware => "Hardware",
     };
+    let default_antenna = match default_module.antenna {
+        radio_common::Antenna::Internal => "Internal",
+        radio_common::Antenna::External => "External",
+    };
 
     let js = format!(
         r#"(function(){{
@@ -435,6 +453,7 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
         var bs=document.getElementById('band-sub-{index}'),b2=document.getElementById('band-24-{index}');
         var ms=document.getElementById('ms{index}'),mo=document.getElementById('mo{index}'),mq=document.getElementById('mq{index}');
         var accel=document.getElementById('accel-{index}');
+        var ant=document.getElementById('ant-{index}');
         var applyBtn=document.getElementById('apply-btn-{index}'),resetBtn=document.getElementById('reset-btn-{index}');
         var testBtn=document.getElementById('test-btn-{index}');
         var status=document.getElementById('apply-status-{index}');
@@ -455,6 +474,7 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
             channel:'{default_channel}',
             modulation:'OFDM',
             accel:'{default_accel}',
+            antenna:'{default_antenna}',
             ofdm:{{mcs:{},opt:{},tx:{}}},
             qpsk:{{fchip:{},mode:{},tx:{}}}
         }};
@@ -655,7 +675,10 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
                     bandwidth_filter:'Narrow'
                 }},
                 modulation:modulation,
-                accelerator:accel?accel.value:'Native'
+                accelerator:accel?accel.value:'Native',
+                // Always sent so the 2.4 GHz choice survives a retune to sub-GHz;
+                // the server only applies it when the module is on 2.4 GHz.
+                antenna:ant?ant.value:'Internal'
             }};
             validateFreq();
             validateChannel();
@@ -693,6 +716,7 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
                 ci.value=defaults.channel;
                 ms.value=defaults.modulation;
                 if(accel){{accel.value=defaults.accel;}}
+                if(ant){{ant.value=defaults.antenna;}}
                 document.getElementById('ofdm-mcs-mo{index}').value=String(defaults.ofdm.mcs);
                 document.getElementById('ofdm-opt-mo{index}').value=String(defaults.ofdm.opt);
                 if(otx){{otx.value=String(defaults.ofdm.tx);syncTxValue(otx,otxv);}}
@@ -763,6 +787,13 @@ fn RadioModuleForm(index: usize, module: RadioModuleConfigDto) -> impl IntoView 
                         <select class="field-input" id=format!("accel-{index}")>
                             <option value="Native" selected=init_accel=="Native">"Native (on-chip)"</option>
                             <option value="Hardware" selected=init_accel=="Hardware">"Hardware (FPGA)"</option>
+                        </select>
+                    </div>
+                    <div class="field-row">
+                        <label class="field-label">"Antenna"</label>
+                        <select class="field-input" id=format!("ant-{index}")>
+                            <option value="Internal" selected=init_antenna=="Internal">"Internal (on-board)"</option>
+                            <option value="External" selected=init_antenna=="External">"External (connector)"</option>
                         </select>
                     </div>
                 </div>

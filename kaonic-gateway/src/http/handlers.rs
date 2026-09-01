@@ -164,6 +164,9 @@ pub async fn put_radio(
         cfg.modulation
     );
 
+    // Captured before `cfg.radio_config` is moved into the apply calls below.
+    let band = cfg.band();
+
     let save_result = {
         let s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
         s.save_module_config(module, &cfg)
@@ -189,6 +192,16 @@ pub async fn put_radio(
         match client.set_accelerator(module, cfg.accelerator).await {
             Ok(_) => log::info!("put_radio: accelerator applied to module {module}"),
             Err(e) => log::error!("put_radio: set_accelerator failed for module {module}: {e:?}"),
+        }
+        // Sub-GHz has no antenna switch on this board — it is always external.
+        if band == radio_common::RadioBand::Band24 {
+            match client
+                .set_antenna(module, radio_common::RadioBand::Band24, cfg.antenna)
+                .await
+            {
+                Ok(_) => log::info!("put_radio: antenna applied to module {module}"),
+                Err(e) => log::error!("put_radio: set_antenna failed for module {module}: {e:?}"),
+            }
         }
     } else {
         log::info!("put_radio: running without radio backend, saved config only");
