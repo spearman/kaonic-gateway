@@ -26,13 +26,6 @@ jobs:
             manifest_path: kaonic-plugin-sample/kaonic-plugin.toml
             service_path: kaonic-plugin-sample/kaonic-plugin-sample.service
             files_dir: kaonic-plugin-sample/files
-          - plugin_id: kaonic-atak-bridge
-            crate: kaonic-atak-bridge
-            binary: kaonic-atak-bridge
-            service: kaonic-atak-bridge.service
-            manifest_path: kaonic-atak-bridge/kaonic-plugin.toml
-            service_path: kaonic-atak-bridge/kaonic-atak-bridge.service
-            files_dir: kaonic-atak-bridge/files
           - plugin_id: kaonic-gateway
             crate: kaonic-gateway
             binary: kaonic-gateway
@@ -40,13 +33,6 @@ jobs:
             manifest_path: kaonic-gateway/kaonic-plugin.toml
             service_path: kaonic-gateway/kaonic-gateway.service
             files_dir: kaonic-gateway/files
-          - plugin_id: kaonic-audio-ptt
-            crate: kaonic-audio-ptt
-            binary: kaonic-audio-ptt
-            service: kaonic-audio-ptt.service
-            manifest_path: kaonic-audio-ptt/kaonic-plugin.toml
-            service_path: kaonic-audio-ptt/kaonic-audio-ptt.service
-            files_dir: kaonic-audio-ptt/files
 
     steps:
       - name: Checkout repository

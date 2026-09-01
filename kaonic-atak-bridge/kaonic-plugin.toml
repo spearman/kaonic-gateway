@@ -1,9 +1,0 @@
-[kaonic-plugin]
-name = "Kaonic ATAK Bridge"
-description = "Standalone ATAK multicast bridge service that forwards ATAK traffic between local multicast groups and Reticulum."
-version = "0.1.0"
-service = "kaonic-atak-bridge.service"
-developer = "Beechat Network Systems Ltd"
-channel = "experimental"
-github_url = "https://github.com/BeechatNetworkSystemsLtd/kaonic-gateway"
-symlink = "/usr/bin/kaonic-atak-bridge"

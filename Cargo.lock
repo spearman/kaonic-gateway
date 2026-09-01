@@ -232,7 +232,6 @@ checksum = "edca88bc138befd0323b20752846e6587272d3b03b0343c8ea28a6f819e6e71f"
 dependencies = [
  "async-trait",
  "axum-core 0.4.5",
- "base64",
  "bytes",
  "futures-util",
  "http",
@@ -252,10 +251,8 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
- "sha1",
  "sync_wrapper",
  "tokio",
- "tokio-tungstenite 0.24.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -292,7 +289,7 @@ dependencies = [
  "sha1",
  "sync_wrapper",
  "tokio",
- "tokio-tungstenite 0.29.0",
+ "tokio-tungstenite",
  "tower",
  "tower-layer",
  "tower-service",
@@ -567,12 +564,6 @@ checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
 dependencies = [
  "cc",
 ]
-
-[[package]]
-name = "codec2"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cefd04ca4a2f096acf5f44da5e5931436d030a620901f1fe8fa773e6b9de65b"
 
 [[package]]
 name = "codee"
@@ -1008,7 +999,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1749,7 +1740,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1820,47 +1811,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaonic-atak-bridge"
+name = "kaonic-crc"
 version = "0.1.0"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#2eb0a979b705605d3deb048b79c30adb436304dc"
 dependencies = [
- "clap",
- "env_logger 0.11.10",
- "if-addrs",
- "kaonic-gateway",
+ "crc32fast",
  "log",
- "rand 0.8.5",
- "reticulum",
- "socket2 0.5.10",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "kaonic-audio-ptt"
-version = "0.1.2"
-dependencies = [
- "axum 0.7.9",
- "axum-server",
- "clap",
- "codec2",
- "env_logger 0.11.10",
- "futures-util",
- "kaonic-gateway",
- "kaonic-reticulum",
- "log",
- "rand 0.8.5",
- "reticulum",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
 ]
 
 [[package]]
 name = "kaonic-ctrl"
 version = "0.1.1"
-source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#9a7dcce0368e65653e406019a6c9b0f88dc7c085"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#2eb0a979b705605d3deb048b79c30adb436304dc"
 dependencies = [
  "kaonic-frame",
  "kaonic-net",
@@ -1881,14 +1843,11 @@ dependencies = [
 [[package]]
 name = "kaonic-frame"
 version = "0.1.0"
-source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#9a7dcce0368e65653e406019a6c9b0f88dc7c085"
-dependencies = [
- "crc",
-]
+source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#2eb0a979b705605d3deb048b79c30adb436304dc"
 
 [[package]]
 name = "kaonic-gateway"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -1953,9 +1912,9 @@ dependencies = [
 [[package]]
 name = "kaonic-net"
 version = "0.1.0"
-source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#9a7dcce0368e65653e406019a6c9b0f88dc7c085"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#2eb0a979b705605d3deb048b79c30adb436304dc"
 dependencies = [
- "crc",
+ "kaonic-crc",
  "kaonic-frame",
  "labrador-ldpc",
  "log",
@@ -2462,7 +2421,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2920,7 +2879,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "radio-common"
 version = "0.1.0"
-source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#9a7dcce0368e65653e406019a6c9b0f88dc7c085"
+source = "git+https://github.com/BeechatNetworkSystemsLtd/kaonic-radio#2eb0a979b705605d3deb048b79c30adb436304dc"
 dependencies = [
  "serde",
 ]
@@ -3303,7 +3262,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3802,7 +3761,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3969,18 +3928,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
-dependencies = [
- "futures-util",
- "log",
- "tokio",
- "tungstenite 0.24.0",
-]
-
-[[package]]
-name = "tokio-tungstenite"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
@@ -3988,7 +3935,7 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite 0.29.0",
+ "tungstenite",
 ]
 
 [[package]]
@@ -4269,24 +4216,6 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tungstenite"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18e5b8366ee7a95b16d32197d0b2604b43a0be89dc5fac9f8e96ccafbaedda8a"
-dependencies = [
- "byteorder",
- "bytes",
- "data-encoding",
- "http",
- "httparse",
- "log",
- "rand 0.8.5",
- "sha1",
- "thiserror 1.0.69",
- "utf-8",
-]
-
-[[package]]
-name = "tungstenite"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
@@ -4368,12 +4297,6 @@ dependencies = [
  "percent-encoding",
  "serde",
 ]
-
-[[package]]
-name = "utf-8"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "utf8-width"
@@ -4624,7 +4547,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
