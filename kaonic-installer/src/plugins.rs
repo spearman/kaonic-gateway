@@ -112,6 +112,11 @@ struct PluginManifest {
     webview: Option<u16>,
     #[serde(default)]
     tls: bool,
+    /// Icon file shipped with the plugin, relative to the plugin runtime
+    /// directory (`<install_dir>/current`) — i.e. `files/icon.png` in the
+    /// package is declared here as `icon = "icon.png"`.
+    #[serde(default)]
+    icon: Option<String>,
     #[serde(default, alias = "bin_path")]
     symlink: Option<String>,
 }
@@ -155,6 +160,7 @@ struct PluginRecord {
     github_url: Option<String>,
     webview: Option<u16>,
     tls: bool,
+    icon: Option<String>,
     binary_name: String,
     bin_path: Option<String>,
     sha256: String,
@@ -180,6 +186,7 @@ pub struct PluginSummary {
     pub github_url: Option<String>,
     pub webview: Option<u16>,
     pub tls: bool,
+    pub icon: Option<String>,
     pub binary_name: String,
     pub bin_path: Option<String>,
     pub sha256: String,
@@ -232,6 +239,32 @@ pub fn initialize_store(
     sync_core_plugins(&conn, core_plugins)?;
     reconcile_plugin_bin_paths(&conn)?;
     Ok(())
+}
+
+/// Icon bytes for an installed plugin, read from its runtime directory.
+#[derive(Debug, Clone)]
+pub struct PluginIcon {
+    pub bytes: Vec<u8>,
+    pub content_type: &'static str,
+}
+
+pub fn read_plugin_icon(db_path: &Path, plugin_id: &str) -> PluginResult<PluginIcon> {
+    let conn = open_db(db_path)?;
+    let record = load_plugin(&conn, plugin_id)?
+        .ok_or_else(|| PluginError::not_found(format!("unknown plugin {plugin_id}")))?;
+    let relative = normalize_icon_path(record.icon.as_deref())?
+        .ok_or_else(|| PluginError::not_found(format!("plugin {plugin_id} declares no icon")))?;
+    let path = Path::new(&record.install_dir)
+        .join("current")
+        .join(&relative);
+    let bytes = fs::read(&path).map_err(|err| {
+        PluginError::not_found(format!("read plugin icon {}: {err}", path.display()))
+    })?;
+
+    Ok(PluginIcon {
+        content_type: icon_content_type(&relative),
+        bytes,
+    })
 }
 
 pub fn list_plugins(
@@ -530,6 +563,7 @@ pub fn install_plugin(
                 github_url: normalize_github_url(package.manifest.github_url.as_deref()),
                 webview: normalize_webview_port(package.manifest.webview)?,
                 tls: package.manifest.tls,
+                icon: normalize_icon_path(package.manifest.icon.as_deref())?,
                 binary_name: package.binary_name.clone(),
                 bin_path: package.bin_path.clone(),
                 sha256: package.sha256.clone(),
@@ -778,6 +812,17 @@ fn parse_plugin_package(zip_bytes: &[u8]) -> PluginResult<PluginPackage> {
     validate_sha256_text(&sha256)?;
     verify_sha256(&binary_bytes, &sha256, "plugin package binary")?;
     let custom_files = read_custom_files(&mut archive, &binary_name)?;
+    if let Some(icon) = normalize_icon_path(manifest.icon.as_deref())? {
+        let icon_path = PathBuf::from(&icon);
+        if !custom_files
+            .iter()
+            .any(|file| file.relative_path == icon_path)
+        {
+            return Err(PluginError::bad_request(format!(
+                "plugin manifest declares icon {icon} but the package has no files/{icon} entry"
+            )));
+        }
+    }
     let signature_bytes = read_optional_signature_bytes(&mut archive, &binary_name)?;
     log::debug!(
         "parsed plugin manifest id={} version={} service={} has_signature={} has_symlink={} custom_files={}",
@@ -1049,6 +1094,7 @@ fn discover_plugin_record(
         github_url: normalize_github_url(manifest.github_url.as_deref()),
         webview: normalize_webview_port(manifest.webview)?,
         tls: manifest.tls,
+        icon: normalize_icon_path(manifest.icon.as_deref())?,
         binary_name,
         bin_path: normalize_bin_path(manifest.symlink.as_deref())?,
         sha256,
@@ -1083,6 +1129,7 @@ fn validate_manifest(manifest: &PluginManifest) -> PluginResult<()> {
     let _ = normalize_channel(manifest.channel.as_deref())?;
     let _ = normalize_github_url(manifest.github_url.as_deref());
     let _ = normalize_webview_port(manifest.webview)?;
+    let _ = normalize_icon_path(manifest.icon.as_deref())?;
     normalize_bin_path(manifest.symlink.as_deref())?;
     derive_binary_name(manifest.service.trim()).map(|_| ())
 }
@@ -1339,6 +1386,50 @@ fn normalize_webview_port(webview: Option<u16>) -> PluginResult<Option<u16>> {
         )),
         Some(port) => Ok(Some(port)),
         None => Ok(None),
+    }
+}
+
+/// Manifest icon path, resolved against the plugin runtime directory
+/// (`<install_dir>/current`) — the same place `files/` contents are installed.
+/// Icons are expected to be 128x128 PNG or SVG.
+fn normalize_icon_path(icon: Option<&str>) -> PluginResult<Option<String>> {
+    let Some(icon) = icon.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = normalize_custom_file_path(Path::new(icon))
+        .map_err(|_| PluginError::bad_request(format!("plugin icon path {icon} is invalid")))?;
+    match normalized
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") | Some("svg") => {}
+        _ => {
+            return Err(PluginError::bad_request(format!(
+                "plugin icon {icon} must be a .png or .svg file"
+            )))
+        }
+    }
+
+    Ok(Some(
+        normalized
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/"),
+    ))
+}
+
+fn icon_content_type(relative_path: &str) -> &'static str {
+    match Path::new(relative_path)
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("svg") => "image/svg+xml",
+        _ => "image/png",
     }
 }
 
@@ -1881,6 +1972,7 @@ fn init_db(conn: &Connection) -> PluginResult<()> {
             github_url TEXT,
             webview INTEGER,
             tls INTEGER NOT NULL DEFAULT 0,
+            icon TEXT,
             binary_name TEXT NOT NULL,
             bin_path TEXT,
             sha256 TEXT NOT NULL DEFAULT '',
@@ -1934,6 +2026,12 @@ fn init_db(conn: &Connection) -> PluginResult<()> {
     ensure_column_exists(
         conn,
         "plugins",
+        "icon",
+        "ALTER TABLE plugins ADD COLUMN icon TEXT",
+    )?;
+    ensure_column_exists(
+        conn,
+        "plugins",
         "target_name",
         "ALTER TABLE plugins ADD COLUMN target_name TEXT",
     )?;
@@ -1958,7 +2056,7 @@ fn init_db(conn: &Connection) -> PluginResult<()> {
 
 fn load_plugin(conn: &Connection, plugin_id: &str) -> PluginResult<Option<PluginRecord>> {
     conn.query_row(
-        "SELECT id, name, description, version, service, developer, channel, github_url, webview, tls, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
+        "SELECT id, name, description, version, service, developer, channel, github_url, webview, tls, icon, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
          FROM plugins
          WHERE id = ?1",
         params![plugin_id],
@@ -1974,17 +2072,18 @@ fn load_plugin(conn: &Connection, plugin_id: &str) -> PluginResult<Option<Plugin
                 github_url: row.get(7)?,
                 webview: row.get(8)?,
                 tls: row.get::<_, i64>(9)? != 0,
-                binary_name: row.get(10)?,
-                bin_path: row.get(11)?,
-                sha256: row.get(12)?,
-                install_dir: row.get(13)?,
-                package_path: row.get(14)?,
-                official: row.get::<_, i64>(15)? != 0,
-                enabled: row.get::<_, i64>(16)? != 0,
-                removable: row.get::<_, i64>(17)? != 0,
-                target_name: row.get(18)?,
-                installed_at: row.get(19)?,
-                updated_at: row.get(20)?,
+                icon: row.get(10)?,
+                binary_name: row.get(11)?,
+                bin_path: row.get(12)?,
+                sha256: row.get(13)?,
+                install_dir: row.get(14)?,
+                package_path: row.get(15)?,
+                official: row.get::<_, i64>(16)? != 0,
+                enabled: row.get::<_, i64>(17)? != 0,
+                removable: row.get::<_, i64>(18)? != 0,
+                target_name: row.get(19)?,
+                installed_at: row.get(20)?,
+                updated_at: row.get(21)?,
             })
         },
     )
@@ -1995,7 +2094,7 @@ fn load_plugin(conn: &Connection, plugin_id: &str) -> PluginResult<Option<Plugin
 fn load_all_plugins(conn: &Connection) -> PluginResult<Vec<PluginRecord>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, description, version, service, developer, channel, github_url, webview, tls, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
+            "SELECT id, name, description, version, service, developer, channel, github_url, webview, tls, icon, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
              FROM plugins
              ORDER BY name COLLATE NOCASE, id",
         )
@@ -2014,17 +2113,18 @@ fn load_all_plugins(conn: &Connection) -> PluginResult<Vec<PluginRecord>> {
                 github_url: row.get(7)?,
                 webview: row.get(8)?,
                 tls: row.get::<_, i64>(9)? != 0,
-                binary_name: row.get(10)?,
-                bin_path: row.get(11)?,
-                sha256: row.get(12)?,
-                install_dir: row.get(13)?,
-                package_path: row.get(14)?,
-                official: row.get::<_, i64>(15)? != 0,
-                enabled: row.get::<_, i64>(16)? != 0,
-                removable: row.get::<_, i64>(17)? != 0,
-                target_name: row.get(18)?,
-                installed_at: row.get(19)?,
-                updated_at: row.get(20)?,
+                icon: row.get(10)?,
+                binary_name: row.get(11)?,
+                bin_path: row.get(12)?,
+                sha256: row.get(13)?,
+                install_dir: row.get(14)?,
+                package_path: row.get(15)?,
+                official: row.get::<_, i64>(16)? != 0,
+                enabled: row.get::<_, i64>(17)? != 0,
+                removable: row.get::<_, i64>(18)? != 0,
+                target_name: row.get(19)?,
+                installed_at: row.get(20)?,
+                updated_at: row.get(21)?,
             })
         })
         .map_err(|err| PluginError::internal(format!("query plugins: {err}")))?;
@@ -2055,6 +2155,7 @@ fn build_plugin_summaries(
             github_url: record.github_url,
             webview: record.webview,
             tls: record.tls,
+            icon: record.icon,
             binary_name: record.binary_name,
             bin_path: record.bin_path,
             sha256: record.sha256,
@@ -2245,6 +2346,7 @@ fn sync_core_plugins(conn: &Connection, core_plugins: &[CorePluginSpec]) -> Plug
                 github_url: normalize_github_url(manifest.github_url.as_deref()),
                 webview: normalize_webview_port(manifest.webview)?,
                 tls: manifest.tls,
+                icon: normalize_icon_path(manifest.icon.as_deref())?,
                 binary_name,
                 bin_path: manifest_bin_path,
                 sha256,
@@ -2269,8 +2371,8 @@ fn sync_core_plugins(conn: &Connection, core_plugins: &[CorePluginSpec]) -> Plug
 fn upsert_plugin(conn: &Connection, record: PluginRecord) -> PluginResult<()> {
     conn.execute(
         "INSERT INTO plugins (
-            id, name, description, version, service, developer, channel, github_url, webview, tls, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
+            id, name, description, version, service, developer, channel, github_url, webview, tls, icon, binary_name, bin_path, sha256, install_dir, package_path, official, enabled, removable, target_name, installed_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             description = excluded.description,
@@ -2281,6 +2383,7 @@ fn upsert_plugin(conn: &Connection, record: PluginRecord) -> PluginResult<()> {
             github_url = excluded.github_url,
             webview = excluded.webview,
             tls = excluded.tls,
+            icon = excluded.icon,
             binary_name = excluded.binary_name,
             bin_path = excluded.bin_path,
             sha256 = excluded.sha256,
@@ -2303,6 +2406,7 @@ fn upsert_plugin(conn: &Connection, record: PluginRecord) -> PluginResult<()> {
             record.github_url,
             record.webview,
             if record.tls { 1 } else { 0 },
+            record.icon,
             record.binary_name,
             record.bin_path,
             record.sha256,
@@ -2659,6 +2763,167 @@ mod tests {
     fn rejects_relative_bin_path() {
         let err = normalize_bin_path(Some("usr/bin/sample")).unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn parses_plugin_package_without_icon() {
+        // The manifest key is optional: a package that never mentions an icon
+        // installs exactly as before.
+        let zip_bytes = build_test_plugin_zip();
+        let package = parse_plugin_package(&zip_bytes).unwrap();
+        assert!(package.manifest.icon.is_none());
+        assert!(normalize_icon_path(package.manifest.icon.as_deref())
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn stores_and_serves_plugin_without_icon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("plugins.db");
+        let conn = open_db(&db_path).unwrap();
+        upsert_plugin(
+            &conn,
+            PluginRecord {
+                id: "kaonic-plugin-sample".into(),
+                name: "Sample".into(),
+                description: "Sample plugin".into(),
+                version: "0.1.0".into(),
+                service: "kaonic-plugin-sample.service".into(),
+                developer: "Beechat".into(),
+                channel: Some("stable".into()),
+                github_url: None,
+                webview: None,
+                tls: false,
+                icon: None,
+                binary_name: "kaonic-plugin-sample".into(),
+                bin_path: None,
+                sha256: "ab".repeat(32),
+                install_dir: tmp.path().to_string_lossy().into_owned(),
+                package_path: tmp
+                    .path()
+                    .join("package.zip")
+                    .to_string_lossy()
+                    .into_owned(),
+                official: false,
+                enabled: true,
+                removable: true,
+                target_name: None,
+                installed_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+
+        let record = load_plugin(&conn, "kaonic-plugin-sample").unwrap().unwrap();
+        assert!(record.icon.is_none());
+
+        // The icon endpoint 404s for such a plugin rather than failing the list.
+        let err = read_plugin_icon(&db_path, "kaonic-plugin-sample").unwrap_err();
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn adds_icon_column_to_legacy_database() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("plugins.db");
+        {
+            // A database created before icons existed.
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE plugins (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    service TEXT NOT NULL UNIQUE,
+                    developer TEXT NOT NULL,
+                    channel TEXT,
+                    github_url TEXT,
+                    webview INTEGER,
+                    tls INTEGER NOT NULL DEFAULT 0,
+                    binary_name TEXT NOT NULL,
+                    bin_path TEXT,
+                    sha256 TEXT NOT NULL DEFAULT '',
+                    install_dir TEXT NOT NULL,
+                    package_path TEXT NOT NULL,
+                    official INTEGER NOT NULL DEFAULT 0,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    removable INTEGER NOT NULL DEFAULT 1,
+                    target_name TEXT,
+                    installed_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                INSERT INTO plugins (
+                    id, name, description, version, service, developer, binary_name,
+                    install_dir, package_path, installed_at, updated_at
+                ) VALUES (
+                    'kaonic-plugin-sample', 'Sample', 'Sample plugin', '0.1.0',
+                    'kaonic-plugin-sample.service', 'Beechat', 'kaonic-plugin-sample',
+                    '/etc/kaonic/plugins/kaonic-plugin-sample',
+                    '/etc/kaonic/plugins/kaonic-plugin-sample/package.zip', 1, 1
+                );",
+            )
+            .unwrap();
+        }
+
+        let conn = open_db(&db_path).unwrap();
+        let has_icon = conn
+            .prepare("PRAGMA table_info(plugins)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|column| column == "icon");
+        assert!(has_icon, "icon column added to legacy database");
+
+        // Rows written before icons existed read back with no icon.
+        let records = load_all_plugins(&conn).unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].icon.is_none());
+    }
+
+    #[test]
+    fn parses_plugin_package_with_icon() {
+        let zip_bytes = build_test_plugin_zip_with_icon("icon.png", Some("files/icon.png"));
+        let package = parse_plugin_package(&zip_bytes).unwrap();
+        assert_eq!(package.manifest.icon.as_deref(), Some("icon.png"));
+    }
+
+    #[test]
+    fn rejects_icon_missing_from_package() {
+        let zip_bytes = build_test_plugin_zip_with_icon("icon.png", None);
+        let err = parse_plugin_package(&zip_bytes).unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert!(err.detail.contains("icon"), "unexpected detail {}", err.detail);
+    }
+
+    #[test]
+    fn rejects_icon_with_unsupported_extension() {
+        let err = normalize_icon_path(Some("icon.bmp")).unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn rejects_icon_escaping_plugin_directory() {
+        let err = normalize_icon_path(Some("../../etc/shadow.png")).unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn normalizes_nested_icon_path() {
+        let icon = normalize_icon_path(Some("  assets/icon.svg  "))
+            .unwrap()
+            .unwrap();
+        assert_eq!(icon, "assets/icon.svg");
+        assert_eq!(icon_content_type(&icon), "image/svg+xml");
+        assert_eq!(icon_content_type("icon.PNG"), "image/png");
+    }
+
+    #[test]
+    fn treats_blank_icon_as_absent() {
+        assert!(normalize_icon_path(Some("   ")).unwrap().is_none());
+        assert!(normalize_icon_path(None).unwrap().is_none());
     }
 
     #[test]
@@ -3175,6 +3440,8 @@ developer = "Beechat"
                     channel: Some("stable".into()),
                     github_url: None,
                     webview: None,
+                    tls: false,
+                    icon: None,
                     binary_name: "kaonic-plugin-sample".into(),
                     bin_path: None,
                     sha256: previous_hash.clone(),
@@ -3237,6 +3504,36 @@ developer = "Beechat"
             }
             writer.start_file(signature_name, options).unwrap();
             writer.write_all(b"signature-bytes").unwrap();
+            writer.finish().unwrap();
+        }
+        out.into_inner()
+    }
+
+    fn build_test_plugin_zip_with_icon(icon_value: &str, icon_entry: Option<&str>) -> Vec<u8> {
+        let mut cursor = Cursor::new(build_test_plugin_zip());
+        let mut archive = ZipArchive::new(&mut cursor).unwrap();
+        let mut out = Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = ZipWriter::new(&mut out);
+            let options = SimpleFileOptions::default();
+            for index in 0..archive.len() {
+                let mut file = archive.by_index(index).unwrap();
+                let name = file.name().to_string();
+                writer.start_file(&name, options).unwrap();
+                if name == MANIFEST_NAME {
+                    let mut manifest = Vec::new();
+                    io::copy(&mut file, &mut manifest).unwrap();
+                    let mut manifest = String::from_utf8(manifest).unwrap();
+                    manifest.push_str(&format!("icon = \"{icon_value}\"\n"));
+                    writer.write_all(manifest.as_bytes()).unwrap();
+                } else {
+                    io::copy(&mut file, &mut writer).unwrap();
+                }
+            }
+            if let Some(entry) = icon_entry {
+                writer.start_file(entry, options).unwrap();
+                writer.write_all(b"icon-bytes").unwrap();
+            }
             writer.finish().unwrap();
         }
         out.into_inner()

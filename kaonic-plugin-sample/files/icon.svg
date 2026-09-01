@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Kaonic sample plugin">
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#0f172a" stroke="#0dcbf0" stroke-width="4"/>
+  <path d="M44 40h18a10 10 0 0 1 20 0h2a4 4 0 0 1 4 4v18a10 10 0 0 0 0 20v2a4 4 0 0 1-4 4H66a10 10 0 0 0-20 0H44a4 4 0 0 1-4-4V66a10 10 0 0 1 0-20V44a4 4 0 0 1 4-4z"
+        fill="none" stroke="#0dcbf0" stroke-width="5" stroke-linejoin="round"/>
+</svg>

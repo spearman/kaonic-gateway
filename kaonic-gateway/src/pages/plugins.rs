@@ -120,6 +120,21 @@ const PLUGINS_JS: &str = r#"
         return scheme + host + ':' + numericPort;
     }
 
+    function iconUrl(plugin) {
+        if (!plugin || !plugin.icon) { return ''; }
+        // updated_at busts the cache when a plugin update ships a new icon.
+        return '/api/plugins/' + encodeURIComponent(plugin.id) + '/icon?v='
+            + encodeURIComponent(plugin.updated_at || plugin.version || '');
+    }
+
+    function iconMarkup(plugin, className) {
+        var url = iconUrl(plugin);
+        if (!url) {
+            return '<span class=\"' + className + ' ' + className + '--empty\" aria-hidden=\"true\">\ud83e\udde9</span>';
+        }
+        return '<img class=\"' + className + '\" src=\"' + escaped(url) + '\" alt=\"\" loading=\"lazy\">';
+    }
+
     function ensureSelection() {
         if (!state.plugins.length) {
             state.selectedId = '';
@@ -387,9 +402,12 @@ const PLUGINS_JS: &str = r#"
             var active = plugin.id === state.selectedId ? ' plugins-list-item--active' : '';
             var kind = plugin.removable ? 'Plugin' : 'System';
             return '<button type=\"button\" class=\"plugins-list-item' + active + '\" data-plugin-select=\"' + plugin.id + '\">'
-                + '<span class=\"plugins-list-name\">' + plugin.name + '</span>'
-                + '<span class=\"plugins-list-meta\">' + kind + ' • v' + plugin.version + '</span>'
-                + '<span class=\"' + badgeClass(plugin.status) + '\">' + plugin.status + '</span>'
+                + iconMarkup(plugin, 'plugins-list-icon')
+                + '<span class=\"plugins-list-text\">'
+                    + '<span class=\"plugins-list-name\">' + plugin.name + '</span>'
+                    + '<span class=\"plugins-list-meta\">' + kind + ' • v' + plugin.version + '</span>'
+                    + '<span class=\"' + badgeClass(plugin.status) + '\">' + plugin.status + '</span>'
+                + '</span>'
                 + '</button>';
         }).join('');
     }
@@ -427,6 +445,7 @@ const PLUGINS_JS: &str = r#"
             : '';
         panel.innerHTML = ''
             + '<div class=\"card-header\">'
+                + iconMarkup(plugin, 'plugins-detail-icon')
                 + '<div>'
                     + '<span class=\"card-title\">Plugin Details</span>'
                     + '<h2 class=\"plugins-detail-name\">' + escaped(plugin.name) + '</h2>'
@@ -455,6 +474,7 @@ const PLUGINS_JS: &str = r#"
                  + '<div class=\"info-row\"><span class=\"info-label\">SHA-256</span><code class=\"info-value\">' + escaped(detailValue(plugin.sha256)) + '</code></div>'
                  + '<div class=\"info-row\"><span class=\"info-label\">GitHub URL</span><span class=\"info-value\">' + githubLink(plugin.github_url) + '</span></div>'
                  + '<div class=\"info-row\"><span class=\"info-label\">Webview</span><span class=\"info-value\">' + webviewLink(plugin) + '</span></div>'
+                 + '<div class=\"info-row\"><span class=\"info-label\">Icon</span><code class=\"info-value\">' + escaped(detailValue(plugin.icon)) + '</code></div>'
                  + '<div class=\"info-row\"><span class=\"info-label\">TLS</span><span class=\"info-value\">' + (plugin.tls ? 'Enabled' : 'Disabled') + '</span></div>'
               + '</div>';
         if (plugin.systemd_status) {
@@ -769,7 +789,7 @@ pub fn PluginsPage() -> impl IntoView {
                     <span class="card-title">"Plugin Manager"</span>
                 </div>
                 <p class="card-body-text">
-                    "Create your own plugin as a ZIP package with kaonic-plugin.toml, a systemd service file, the plugin binary, and an optional files/ folder for extra runtime assets. The binary is installed into the plugin current directory, files/ is copied into that same runtime folder, and updates replace the full plugin contents with the new package."
+                    "Create your own plugin as a ZIP package with kaonic-plugin.toml, a systemd service file, the plugin binary, and an optional files/ folder for extra runtime assets. The binary is installed into the plugin current directory, files/ is copied into that same runtime folder, and updates replace the full plugin contents with the new package. Ship an icon as files/icon.png and declare it with icon = \"icon.png\" in the manifest — 128x128 PNG or SVG."
                 </p>
             </div>
 

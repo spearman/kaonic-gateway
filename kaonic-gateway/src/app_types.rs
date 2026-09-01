@@ -87,6 +87,8 @@ pub struct PluginSummaryDto {
     pub channel: Option<String>,
     pub webview: Option<u16>,
     pub tls: bool,
+    #[serde(default)]
+    pub icon: Option<String>,
     pub binary_name: String,
     pub bin_path: Option<String>,
     pub sha256: String,

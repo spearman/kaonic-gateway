@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -132,6 +132,7 @@ async fn main() {
             get(handle_installer_version),
         )
         .route("/api/plugins/install", post(handle_plugin_install))
+        .route("/api/plugins/:plugin_id/icon", get(handle_plugin_icon))
         .route("/api/plugins/:plugin_id/upload", post(handle_plugin_upload))
         .route("/api/plugins/:plugin_id/start", post(handle_plugin_start))
         .route("/api/plugins/:plugin_id/stop", post(handle_plugin_stop))
@@ -357,6 +358,35 @@ async fn handle_plugin_upload(
         Ok(Err(err)) => plugin_error_response(&format!("update plugin {plugin_id}"), err),
         Err(err) => {
             log::error!("plugin update task panic for plugin_id={plugin_id}: {err}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"detail": format!("plugin task panic: {err}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_plugin_icon(
+    Path(plugin_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let plugins_db = state.plugins_db.clone();
+    let lookup_id = plugin_id.clone();
+    match tokio::task::spawn_blocking(move || plugins::read_plugin_icon(&plugins_db, &lookup_id))
+        .await
+    {
+        Ok(Ok(icon)) => (
+            [
+                (header::CONTENT_TYPE, icon.content_type),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            icon.bytes,
+        )
+            .into_response(),
+        Ok(Err(err)) => plugin_error_response("read plugin icon", err),
+        Err(err) => {
+            log::error!("plugin icon task panic: {err}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"detail": format!("plugin task panic: {err}")})),

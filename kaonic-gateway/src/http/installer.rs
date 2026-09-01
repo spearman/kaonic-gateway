@@ -23,6 +23,10 @@ pub async fn installer_version() -> impl IntoResponse {
     proxy_get(format!("{UPDATE_BASE}/api/plugins/installer-version")).await
 }
 
+pub async fn plugin_icon(Path(plugin_id): Path<String>) -> impl IntoResponse {
+    proxy_bytes(format!("{UPDATE_BASE}/api/plugins/{plugin_id}/icon")).await
+}
+
 pub async fn install_plugin(req: Request<Body>) -> impl IntoResponse {
     proxy_request(
         Method::POST,
@@ -101,6 +105,41 @@ pub async fn delete_plugin(Path(plugin_id): Path<String>) -> impl IntoResponse {
         None,
     )
     .await
+}
+
+/// Byte-preserving proxy — used for binary payloads such as plugin icons,
+/// where `proxy_get`'s lossy `text()` conversion would corrupt the body.
+async fn proxy_bytes(url: String) -> axum::response::Response {
+    match reqwest::Client::new().get(&url).send().await {
+        Ok(resp) => {
+            let status = StatusCode::from_u16(resp.status().as_u16())
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            let content_type = resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            match resp.bytes().await {
+                Ok(body) => (
+                    status,
+                    [(axum::http::header::CONTENT_TYPE, content_type)],
+                    body,
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::BAD_GATEWAY,
+                    json_detail(&format!("read plugin icon body: {e}")),
+                )
+                    .into_response(),
+            }
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            json_detail(&format!("kaonic-installer unreachable: {e}")),
+        )
+            .into_response(),
+    }
 }
 
 async fn proxy_get(url: String) -> impl IntoResponse {

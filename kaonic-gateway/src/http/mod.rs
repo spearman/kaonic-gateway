@@ -97,6 +97,7 @@ pub async fn serve(state: AppState, http_addr: SocketAddr, https_addr: SocketAdd
             "/api/plugins/kaonic-installer/upgrade",
             post(installer::upgrade_installer_binary),
         )
+        .route("/api/plugins/{plugin_id}/icon", get(installer::plugin_icon))
         .route(
             "/api/plugins/{plugin_id}/upload",
             post(installer::upload_plugin),
