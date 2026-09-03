@@ -207,9 +207,7 @@ pub struct PluginSystemdStatus {
     pub active_state: String,
     pub sub_state: String,
     pub unit_file_state: String,
-    pub main_pid: Option<u32>,
-    pub tasks_current: Option<u64>,
-    pub memory_current: Option<u64>,
+    pub load_state: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -276,7 +274,7 @@ pub fn list_plugins(
 ) -> PluginResult<Vec<PluginSummary>> {
     initialize_store(plugins_root, db_path, systemd_dir, cert_path, core_plugins)?;
     log::debug!("loading plugin summaries from {}", db_path.display());
-    let cached_status = refresh_systemd_status_cache(db_path)?;
+    let cached_status = refresh_systemd_status_cache(db_path, &[])?;
     list_plugins_with_cached_status(db_path, &cached_status)
 }
 
@@ -289,19 +287,25 @@ pub fn list_plugins_with_cached_status(
     build_plugin_summaries(load_all_plugins(&conn)?, systemd_status_by_service)
 }
 
+/// One status snapshot for every plugin unit plus `extra_services` — the core
+/// units the gateway also needs — so the whole system is covered by a single
+/// `systemctl show`.
 pub fn refresh_systemd_status_cache(
     db_path: &Path,
+    extra_services: &[String],
 ) -> PluginResult<HashMap<String, PluginSystemdStatus>> {
     let conn = open_db(db_path)?;
     init_db(&conn)?;
-    let mut statuses = HashMap::new();
-    for record in load_all_plugins(&conn)? {
-        statuses.insert(
-            record.service.clone(),
-            read_service_systemd_status(&record.service),
-        );
+    let mut services = load_all_plugins(&conn)?
+        .into_iter()
+        .map(|record| record.service)
+        .collect::<Vec<_>>();
+    for service in extra_services {
+        if !services.contains(service) {
+            services.push(service.clone());
+        }
     }
-    Ok(statuses)
+    Ok(read_services_systemd_status(&services))
 }
 
 pub fn log_boot_inventory(plugins_root: &Path, db_path: &Path) -> PluginResult<()> {
@@ -2546,58 +2550,37 @@ fn unknown_systemd_status() -> PluginSystemdStatus {
         active_state: "unknown".into(),
         sub_state: "unknown".into(),
         unit_file_state: "unknown".into(),
-        main_pid: None,
-        tasks_current: None,
-        memory_current: None,
+        load_state: "unknown".into(),
     }
 }
 
-fn read_service_systemd_status(service: &str) -> PluginSystemdStatus {
+/// Status for every plugin unit in a single `systemctl show`.
+///
+/// systemd emits one property block per unit, blocks separated by a blank line,
+/// and `Id` maps a block back to its unit — so one fork and one D-Bus round trip
+/// covers the whole set instead of one per plugin.
+fn read_services_systemd_status(services: &[String]) -> HashMap<String, PluginSystemdStatus> {
+    let mut statuses = HashMap::new();
+    if services.is_empty() {
+        return statuses;
+    }
+
     #[cfg(target_os = "linux")]
     {
-        let mut snapshot = unknown_systemd_status();
         match Command::new("systemctl")
             .args([
                 "show",
-                service,
+                "--property=Id",
                 "--property=ActiveState",
                 "--property=SubState",
                 "--property=UnitFileState",
-                "--property=MainPID",
-                "--property=TasksCurrent",
-                "--property=MemoryCurrent",
+                "--property=LoadState",
             ])
+            .args(services)
             .output()
         {
             Ok(output) if output.status.success() => {
-                for line in String::from_utf8_lossy(&output.stdout).lines() {
-                    if let Some(value) = line.strip_prefix("ActiveState=") {
-                        if !value.trim().is_empty() {
-                            snapshot.active_state = value.trim().to_string();
-                        }
-                    } else if let Some(value) = line.strip_prefix("SubState=") {
-                        if !value.trim().is_empty() {
-                            snapshot.sub_state = value.trim().to_string();
-                        }
-                    } else if let Some(value) = line.strip_prefix("UnitFileState=") {
-                        if !value.trim().is_empty() {
-                            snapshot.unit_file_state = value.trim().to_string();
-                        }
-                    } else if let Some(value) = line.strip_prefix("MainPID=") {
-                        snapshot.main_pid = parse_systemd_number(value).and_then(|value| {
-                            if value == 0 {
-                                None
-                            } else {
-                                u32::try_from(value).ok()
-                            }
-                        });
-                    } else if let Some(value) = line.strip_prefix("TasksCurrent=") {
-                        snapshot.tasks_current = parse_systemd_number(value);
-                    } else if let Some(value) = line.strip_prefix("MemoryCurrent=") {
-                        snapshot.memory_current = parse_systemd_number(value);
-                    }
-                }
-                snapshot
+                statuses = parse_systemd_show_blocks(&String::from_utf8_lossy(&output.stdout));
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -2606,33 +2589,68 @@ fn read_service_systemd_status(service: &str) -> PluginSystemdStatus {
                 } else {
                     stderr
                 };
-                snapshot.active_state = error_text.clone();
-                snapshot.sub_state = error_text;
-                snapshot
+                for service in services {
+                    let mut snapshot = unknown_systemd_status();
+                    snapshot.active_state = error_text.clone();
+                    snapshot.sub_state = error_text.clone();
+                    statuses.insert(service.clone(), snapshot);
+                }
             }
             Err(err) => {
-                snapshot.active_state = format!("systemctl unavailable: {err}");
-                snapshot.sub_state = "unknown".into();
-                snapshot
+                for service in services {
+                    let mut snapshot = unknown_systemd_status();
+                    snapshot.active_state = format!("systemctl unavailable: {err}");
+                    statuses.insert(service.clone(), snapshot);
+                }
             }
         }
     }
 
     #[cfg(not(target_os = "linux"))]
     {
-        let mut snapshot = unknown_systemd_status();
-        snapshot.active_state = format!("Unavailable on this host ({service})");
-        snapshot
+        for service in services {
+            let mut snapshot = unknown_systemd_status();
+            snapshot.active_state = format!("Unavailable on this host ({service})");
+            statuses.insert(service.clone(), snapshot);
+        }
     }
+
+    // Units systemd did not report at all still get an entry, so callers keep
+    // seeing "unknown" rather than a missing key.
+    for service in services {
+        statuses
+            .entry(service.clone())
+            .or_insert_with(unknown_systemd_status);
+    }
+    statuses
 }
 
-fn parse_systemd_number(value: &str) -> Option<u64> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed == "[not set]" {
-        None
-    } else {
-        trimmed.parse::<u64>().ok()
+fn parse_systemd_show_blocks(stdout: &str) -> HashMap<String, PluginSystemdStatus> {
+    let mut statuses = HashMap::new();
+    for block in stdout.split("\n\n") {
+        let mut id = String::new();
+        let mut snapshot = unknown_systemd_status();
+        for line in block.lines() {
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            let value = value.trim();
+            match key.trim() {
+                "Id" => id = value.to_string(),
+                "ActiveState" if !value.is_empty() => snapshot.active_state = value.to_string(),
+                "SubState" if !value.is_empty() => snapshot.sub_state = value.to_string(),
+                "UnitFileState" if !value.is_empty() => {
+                    snapshot.unit_file_state = value.to_string()
+                }
+                "LoadState" if !value.is_empty() => snapshot.load_state = value.to_string(),
+                _ => {}
+            }
+        }
+        if !id.is_empty() {
+            statuses.insert(id, snapshot);
+        }
     }
+    statuses
 }
 
 fn read_service_enabled(service: &str) -> bool {
@@ -2763,6 +2781,37 @@ mod tests {
     fn rejects_relative_bin_path() {
         let err = normalize_bin_path(Some("usr/bin/sample")).unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn parses_batched_systemctl_show_output() {
+        // Two units in one `systemctl show`: blocks separated by a blank line,
+        // matched back to their unit by Id.
+        let stdout = "Id=kaonic-gateway.service\nActiveState=active\nSubState=running\nUnitFileState=enabled\n\nId=kaonic-audio-ptt.service\nActiveState=failed\nSubState=failed\nUnitFileState=disabled\n";
+        let statuses = parse_systemd_show_blocks(stdout);
+
+        let gateway = statuses.get("kaonic-gateway.service").unwrap();
+        assert_eq!(gateway.active_state, "active");
+        assert_eq!(gateway.sub_state, "running");
+        assert_eq!(gateway.unit_file_state, "enabled");
+
+        let ptt = statuses.get("kaonic-audio-ptt.service").unwrap();
+        assert_eq!(ptt.active_state, "failed");
+        assert_eq!(ptt.sub_state, "failed");
+        assert_eq!(ptt.unit_file_state, "disabled");
+    }
+
+    #[test]
+    fn batched_status_query_skips_fork_when_no_units() {
+        assert!(read_services_systemd_status(&[]).is_empty());
+    }
+
+    #[test]
+    fn batched_status_fills_unreported_units() {
+        // A unit systemd never reported still gets an "unknown" entry.
+        let statuses = read_services_systemd_status(&["definitely-missing.service".to_string()]);
+        assert_eq!(statuses.len(), 1);
+        assert!(statuses.contains_key("definitely-missing.service"));
     }
 
     #[test]

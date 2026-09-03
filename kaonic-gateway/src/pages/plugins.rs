@@ -223,11 +223,6 @@ const PLUGINS_JS: &str = r#"
         return Math.round(size / 104857.6) / 10 + ' MB';
     }
 
-    function formatMemorySize(size) {
-        if (size == null || size === '') { return '—'; }
-        return formatFileSize(Number(size));
-    }
-
     function setModalFeedback(text, kind) {
         state.modal.feedback = text || '';
         state.modal.feedbackKind = kind || '';
@@ -488,9 +483,6 @@ const PLUGINS_JS: &str = r#"
                         + '<div class=\"info-row\"><span class=\"info-label\">Active state</span><span class=\"info-value\">' + escaped(detailValue(plugin.systemd_status.active_state)) + '</span></div>'
                         + '<div class=\"info-row\"><span class=\"info-label\">Sub-state</span><span class=\"info-value\">' + escaped(detailValue(plugin.systemd_status.sub_state)) + '</span></div>'
                         + '<div class=\"info-row\"><span class=\"info-label\">Unit file</span><span class=\"info-value\">' + escaped(detailValue(plugin.systemd_status.unit_file_state)) + '</span></div>'
-                        + '<div class=\"info-row\"><span class=\"info-label\">Main PID</span><span class=\"info-value\">' + escaped(detailValue(plugin.systemd_status.main_pid)) + '</span></div>'
-                        + '<div class=\"info-row\"><span class=\"info-label\">Tasks</span><span class=\"info-value\">' + escaped(detailValue(plugin.systemd_status.tasks_current)) + '</span></div>'
-                        + '<div class=\"info-row\"><span class=\"info-label\">Memory</span><span class=\"info-value\">' + escaped(formatMemorySize(plugin.systemd_status.memory_current)) + '</span></div>'
                     + '</div>'
                 + '</div>';
         }

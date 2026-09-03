@@ -208,7 +208,14 @@ pub async fn read_gateway_services() -> Vec<ServiceStatusDto> {
         }
     }
 
-    let services = query_gateway_services().await;
+    // Prefer the installer's shared snapshot — it already polls systemd for every
+    // unit on the device, so reading it costs no fork here. Fall back to our own
+    // `systemctl show` when the installer is unreachable, since that is exactly
+    // when its own unit state matters most.
+    let services = match query_services_from_installer().await {
+        Some(services) => services,
+        None => query_gateway_services().await,
+    };
 
     let mut guard = service_cache().lock().unwrap_or_else(|e| e.into_inner());
     *guard = Some((std::time::Instant::now(), services.clone()));
@@ -217,6 +224,65 @@ pub async fn read_gateway_services() -> Vec<ServiceStatusDto> {
 
 pub fn is_gateway_service_unit(unit: &str) -> bool {
     GATEWAY_SERVICE_UNITS.contains(&unit)
+}
+
+const INSTALLER_SERVICES_URL: &str = "http://127.0.0.1:8682/api/services";
+
+#[derive(serde::Deserialize)]
+struct InstallerServiceStatus {
+    #[serde(default)]
+    active_state: String,
+    #[serde(default)]
+    sub_state: String,
+    #[serde(default)]
+    load_state: String,
+}
+
+/// Read the installer's cached systemd snapshot. `None` means "not usable" —
+/// unreachable, malformed, or missing one of the units we render — and the
+/// caller then falls back to querying systemd directly.
+async fn query_services_from_installer() -> Option<Vec<ServiceStatusDto>> {
+    let response = reqwest::Client::new()
+        .get(INSTALLER_SERVICES_URL)
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let statuses = response
+        .json::<std::collections::HashMap<String, InstallerServiceStatus>>()
+        .await
+        .ok()?;
+
+    if !GATEWAY_SERVICE_UNITS
+        .iter()
+        .all(|unit| statuses.contains_key(*unit))
+    {
+        return None;
+    }
+
+    Some(
+        GATEWAY_SERVICE_UNITS
+            .iter()
+            .map(|&unit| {
+                let status = &statuses[unit];
+                ServiceStatusDto {
+                    unit: unit.into(),
+                    brief_name: service_brief_name(unit).into(),
+                    status: format_service_status(
+                        &status.load_state,
+                        &status.active_state,
+                        &status.sub_state,
+                    ),
+                    load_state: status.load_state.clone(),
+                    active_state: status.active_state.clone(),
+                    sub_state: status.sub_state.clone(),
+                }
+            })
+            .collect(),
+    )
 }
 
 /// Query all gateway units with a single `systemctl show` invocation (one fork
@@ -344,7 +410,6 @@ fn service_brief_name(unit: &str) -> &'static str {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn format_service_status(load_state: &str, active_state: &str, sub_state: &str) -> String {
     if load_state != "loaded" && !load_state.is_empty() {
         return load_state.to_string();
