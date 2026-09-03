@@ -127,6 +127,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/plugins", get(handle_plugins_list))
+        .route("/api/services", get(handle_services_list))
         .route(
             "/api/plugins/installer-version",
             get(handle_installer_version),
@@ -256,6 +257,14 @@ async fn handle_plugins_list(State(state): State<AppState>) -> impl IntoResponse
                 .into_response()
         }
     }
+}
+
+/// Cached systemd status for every unit the installer tracks — plugin units and
+/// the core gateway units. Served from the background refresh, so a caller never
+/// causes a `systemctl` fork of its own.
+async fn handle_services_list(State(state): State<AppState>) -> impl IntoResponse {
+    let cache = state.systemd_cache.read().await.clone();
+    Json(cache).into_response()
 }
 
 async fn handle_installer_version() -> impl IntoResponse {
@@ -525,8 +534,15 @@ async fn run_systemd_refresh_loop(state: AppState) {
 async fn refresh_systemd_cache(state: &AppState) -> Result<(), plugins::PluginError> {
     let plugins_db = state.plugins_db.clone();
 
-    let cache =
-        tokio::task::spawn_blocking(move || plugins::refresh_systemd_status_cache(&plugins_db))
+    let core_services = state
+        .core_plugins
+        .iter()
+        .map(|spec| spec.target.service.to_string())
+        .collect::<Vec<_>>();
+
+    let cache = tokio::task::spawn_blocking(move || {
+        plugins::refresh_systemd_status_cache(&plugins_db, &core_services)
+    })
             .await
             .map_err(|err| plugins::PluginError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
